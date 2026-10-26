@@ -26,6 +26,8 @@ CUSTOMER_COMMANDS = [
 ADMIN_COMMANDS = [
     BotCommand(command="mijozlar", description="📋 Barcha mijozlar ro'yxati"),
     BotCommand(command="yuklash", description="🌐 Web saytni yuklash"),
+    BotCommand(command="backup", description="🗄 Bazaning zaxira nusxasi"),
+    BotCommand(command="restore", description="♻️ Bazani zaxiradan tiklash"),
     *CUSTOMER_COMMANDS,
 ]
 

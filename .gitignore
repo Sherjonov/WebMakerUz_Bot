@@ -137,3 +137,4 @@ data/
 *.db-shm
 .venv/
 .idea/
+*.bak

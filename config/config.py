@@ -12,6 +12,20 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env", encoding="utf-8-sig")
 
 
+def _flag(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "ha", "on"}
+
+
+def _int_env(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, "").strip() or default)
+    except ValueError:
+        return default
+
+
 def _parse_admins(raw: str) -> list[int]:
     ids: list[int] = []
     for part in raw.replace(";", ",").replace(" ", ",").split(","):
@@ -55,6 +69,18 @@ def payment_configured() -> bool:
     """Karta raqami .env da to'g'ri kiritilganmi (12-19 ta raqam)."""
     return 12 <= len(CARD_NUMBER) <= 19
 
+
+# ---- Hosting (Render va shunga o'xshash xizmatlar) ----
+ON_RENDER: bool = bool(os.getenv("RENDER"))
+# Render "Web Service" ga PORT beradi va bot shu portni OCHISHI shart (aks holda "No open ports detected" -> "Timed Out")
+PORT: int = _int_env("PORT", 0)
+# Bepul tarifda xizmat 15 daqiqa so'rovsiz qolsa uxlab qoladi -> bot o'ziga vaqti-vaqti bilan so'rov yuboradi
+KEEP_ALIVE_ENABLED: bool = _flag("KEEP_ALIVE", True)
+KEEP_ALIVE_URL: str = (os.getenv("KEEP_ALIVE_URL") or os.getenv("RENDER_EXTERNAL_URL") or "").strip().rstrip("/")
+KEEP_ALIVE_INTERVAL: int = max(60, _int_env("KEEP_ALIVE_INTERVAL", 600))  # soniya
+# Ma'lumotlar bazasi zaxirasi (Render bepul tarifida fayllar o'chib ketadi)
+BACKUP_ENABLED: bool = _flag("BACKUP", True)
+BACKUP_INTERVAL_MINUTES: int = max(5, _int_env("BACKUP_INTERVAL_MINUTES", 15))
 
 # ---- Cheklovlar ----
 MAX_DESCRIPTION_CHARS = 6000   # sayt haqida yozilgan matnning umumiy uzunligi

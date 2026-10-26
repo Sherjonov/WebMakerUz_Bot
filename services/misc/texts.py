@@ -217,7 +217,7 @@ def unknown_command(is_admin: bool) -> str:
         "/edit_narx — narxni o'zgartirish"
     )
     if is_admin:
-        text += "\n/mijozlar — mijozlar ro'yxati\n/yuklash — web saytni yuklash"
+        text += "\n/mijozlar — mijozlar ro'yxati\n/yuklash — web saytni yuklash\n/backup — zaxira nusxa\n/restore — bazani tiklash"
     return text
 
 
@@ -229,6 +229,7 @@ ADMIN_PANEL = (
     "✍️ Mijozga yozish — xabar boshidagi raqamni bosing (masalan, /1) yoki "
     "«Javob yozish» tugmasidan foydalaning.\n"
     "🌐 /yuklash — tayyor saytning havolasini mijozga yuborish (to'lov so'rovi bilan)\n"
+    "🗄 /backup — bazaning zaxira nusxasini olish, /restore — tiklash\n"
     "🔚 Suhbatni tugatish — «Suhbatni tugatish» tugmasi.\n\n"
     "🧪 Botni mijoz sifatida sinab ko'rish uchun «Mijoz sifatida sinash» tugmasini bosing."
 )
@@ -319,4 +320,51 @@ def payment_approved(link: str) -> str:
         "✅ <b>To'lov tasdiqlandi!</b> Rahmat 🙏\n\n"
         f"🌐 <b>Saytingiz:</b> {esc(link)}\n\n"
         "Savollaringiz bo'lsa, shu yerga yozing — admin javob beradi."
+    )
+
+
+# ═══════════════ Zaxira nusxa va tiklash ═══════════════
+BACKUP_FAILED = "⚠️ Zaxira nusxani yuborib bo'lmadi. Keyinroq qayta urinib ko'ring."
+RESTORE_HELP = (
+    "♻️ <b>Bazani tiklash</b>\n\n"
+    "Bot yuborgan zaxira faylga (<code>webmaker_zaxira_....db</code>) <b>javob qilib</b> "
+    "<code>/restore</code> deb yozing.\n\n"
+    "Joriy bazada mijozlar bo'lsa, <code>/restore force</code> yozing "
+    "(eski baza <code>.bak</code> nusxa sifatida saqlab qo'yiladi)."
+)
+RESTORE_BAD_FILE = "❌ Bu fayl yaroqsiz: faqat botning zaxira fayli (<code>.db</code>) qabul qilinadi."
+RESTORE_DOWNLOAD_FAILED = "❌ Faylni yuklab olib bo'lmadi. Qayta urinib ko'ring."
+FRESH_DB_NOTE = (
+    "ℹ️ <b>Yangi (bo'sh) ma'lumotlar bazasi yaratildi.</b> Mijoz raqamlari 1 dan boshlanadi.\n"
+    "Bu kutilmagan bo'lsa (server qayta ishga tushgan va fayllar o'chgan bo'lishi mumkin) — "
+    "eski xabarlardagi mijoz raqamlariga YOZMANG. Avval oxirgi zaxira faylini topib, "
+    "unga javob qilib <code>/restore</code> yuboring."
+)
+EPHEMERAL_DISK_NOTE = (
+    "⚠️ <b>Render bepul tarifida fayllar vaqtinchalik</b>: bot qayta ishga tushsa baza o'chadi. "
+    "Zaxira nusxalar shu chatga avtomatik yuboriladi. Doimiy yechim — README dagi \"Render\" bo'limi."
+)
+
+
+def backup_caption(stats: dict) -> str:
+    return (
+        "🗄 <b>Zaxira nusxa</b>\n"
+        f"👥 Mijozlar: {stats['customers']}  ·  📦 Buyurtmalar: {stats['orders']}  ·  "
+        f"🌐 Yuborilgan saytlar: {stats['deliveries']}\n\n"
+        "Tiklash: shu faylga javob qilib <code>/restore</code> yozing."
+    )
+
+
+def restore_needs_force(customers: int) -> str:
+    return (
+        f"⚠️ Joriy bazada <b>{customers}</b> ta mijoz bor. Uni almashtirish uchun "
+        "<code>/restore force</code> yozing (eski baza saqlab qo'yiladi)."
+    )
+
+
+def restore_done(info: dict) -> str:
+    return (
+        "✅ <b>Baza tiklandi!</b>\n"
+        f"👥 Mijozlar: {info['customers']}  ·  📦 Buyurtmalar: {info['orders']}\n\n"
+        "Buyruqlar menyusi yangilandi. /mijozlar bilan tekshirib ko'ring."
     )

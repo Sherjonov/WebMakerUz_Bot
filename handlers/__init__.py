@@ -1,6 +1,7 @@
 """Barcha routerlarni bitta asosiy routerga yig'ish. Tartib MUHIM: birinchi mos kelgan handler ishlaydi."""
 from aiogram import Router
 
+from .admins.backup import router as admin_backup_router
 from .admins.panel import router as admin_panel_router
 from .admins.payments import router as admin_payments_router
 from .admins.reply import router as admin_reply_router
@@ -20,6 +21,7 @@ router.include_router(errors_router)
 
 # Adminlar (avval tekshiriladi)
 router.include_router(admin_panel_router)
+router.include_router(admin_backup_router)
 router.include_router(admin_upload_router)  # "/5 havola" /N dan OLDIN tekshirilishi shart
 router.include_router(admin_reply_router)
 router.include_router(admin_web_router)

@@ -12,11 +12,14 @@ from config.config import ADMINS
 logger = logging.getLogger(__name__)
 
 
-async def on_startup_notify(bot: Bot) -> None:
-    """Bot ishga tushganda barcha adminlarga xabar yuboradi."""
+async def on_startup_notify(bot: Bot, notes: list[str] | None = None) -> None:
+    """Bot ishga tushganda barcha adminlarga xabar yuboradi (notes — qo'shimcha ogohlantirishlar)."""
+    text = "🚀 <b>WebMakerUz Bot ishga tushdi</b>"
+    if notes:
+        text += "\n\n" + "\n\n".join(notes)
     for admin_id in ADMINS:
         try:
-            await bot.send_message(admin_id, "🚀 <b>WebMakerUz Bot ishga tushdi</b>")
+            await bot.send_message(admin_id, text)
         except TelegramForbiddenError:
             logger.warning("Admin %s botga hali /start bosmagan — unga xabar yuborib bo'lmadi", admin_id)
         except TelegramAPIError as e:

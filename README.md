@@ -88,6 +88,8 @@ keyin yangi tokenni `.env` ga yozing.
 | `/mijozlar` | admin | barcha mijozlar ro'yxati (sahifalangan) |
 | `/1`, `/2`, `/3` … | admin | shu raqamli mijozga xabar yozish rejimi |
 | `/yuklash` | admin | `🌐 Web saytni yuklash` tugmasi bilan bir xil (pastga qarang) |
+| `/backup` | admin | bazaning zaxira nusxasini fayl sifatida olish |
+| `/restore` | admin | zaxira faylga **javob qilib** yozilsa — bazani tiklaydi (`/restore force` — bazada mijozlar bo'lsa ham) |
 
 * Har bir mijoz ro'yxatdan o'tganda **/1, /2, /3 …** raqamini oladi. Adminga keladigan har bir xabar shu raqam bilan boshlanadi
   (masalan `/5 — Yangi buyurtma`), raqamni bosish — o'sha mijoz bilan yozishmani ochadi.
@@ -125,6 +127,39 @@ keyin yangi tokenni `.env` ga yozing.
 
 ---
 
+## ☁️ Render'ga joylash
+
+**Xizmat turi: Web Service** (bepul tarifda faqat shu mavjud). Sozlamalar:
+
+| Maydon | Qiymat |
+|---|---|
+| Build Command | `pip install -r requirements.txt` |
+| Start Command | `python main.py` |
+| Health Check Path | `/health` |
+| Environment | `BOT_TOKEN`, `ADMINS`, `CARD_NUMBER`, `CARD_OWNER` (Render'ning **Environment** bo'limida kiriting; `.env` faylini GitHub'ga yuklamang!) |
+
+**Nega avval xato chiqardi (`No open ports detected` → `Timed Out`)?** Render "Web Service" dastur port ochishini kutadi, bot esa
+Telegramga o'zi ulanadi va port ochmaydi. Endi bot Render bergan `PORT` da kichik HTTP server (`/health`) ochadi — xato tuzaldi.
+
+**Bepul tarifning ikki cheklovi va bot ularni qanday hal qiladi:**
+
+1. *15 daqiqa so'rovsiz qolsa xizmat uxlab qoladi* (bot javob bermay qoladi). Bot o'ziga har 10 daqiqada so'rov yuborib turadi
+   (`RENDER_EXTERNAL_URL` ni Render o'zi beradi, hech narsa sozlash shart emas). Qo'shimcha kafolat uchun
+   [UptimeRobot](https://uptimerobot.com) da `https://SIZNING-XIZMAT.onrender.com/health` manzilini 5 daqiqada bir tekshiradigan monitor qo'shishingiz mumkin.
+2. *Fayllar (SQLite baza ham) har qayta ishga tushish va yangi versiya yuklashda o'chadi.* Shuning uchun bot:
+   * ma'lumot o'zgarsa, **har 15 daqiqada** va **o'chirilishidan oldin** bazaning zaxira nusxasini adminlarga fayl qilib yuboradi
+     (`🗄 Zaxira nusxa`, jimgina — ovozsiz);
+   * baza o'chib, bot bo'sh baza bilan ishga tushsa — adminlarga **ogohlantirish** yuboradi ("Yangi (bo'sh) baza yaratildi");
+   * tiklash: eng oxirgi `🗄 Zaxira nusxa` faylga **javob qilib** `/restore` yozing → mijozlar, buyurtmalar, to'lovlar qaytadi.
+
+   ⚠️ Baza tiklanmaguncha eski xabarlardagi mijoz raqamlariga (`/5` ...) yozmang — raqamlar yangidan boshlangan bo'ladi.
+
+**Doimiy yechim (pulli):** Render'da pulli instance + **Persistent Disk** (masalan, Mount Path: `/var/data`) ulab,
+Environment'ga `DB_PATH=/var/data/webmaker.db` qo'shing — baza hech qachon o'chmaydi, zaxira esa qo'shimcha xavfsizlik bo'lib qoladi.
+Pulli instance uxlamaydi; port kerak bo'lmasa **Background Worker** tanlash ham mumkin.
+
+---
+
 ## 🗂 Loyiha tuzilmasi
 
 ```
@@ -132,7 +167,7 @@ main.py                  — ishga tushirish
 config/config.py         — .env dan sozlamalar
 handlers/
   users/                 — start, forma (FSM), web, edit_narx, payment (to'lov cheki), echo
-  admins/                — mijozlar ro'yxati, /N yozishma, Ha/Yo'q javoblari, sayt yuklash (upload.py), chek tasdiqlash (payments.py)
+  admins/                — mijozlar ro'yxati, /N yozishma, Ha/Yo'q javoblari, sayt yuklash (upload.py), chek tasdiqlash (payments.py), /backup /restore (backup.py)
   errors.py              — xatoliklarni ushlash
 keyboards/               — rangli tugmalar (default = oddiy, inline = xabar ostidagi)
 states/                  — FSM holatlari
@@ -140,6 +175,8 @@ filters/  middlewares/   — admin filtri, spamdan himoya
 services/
   db_api/                — SQLite (mijozlar, buyurtmalar, /web so'rovlari)
   misc/texts.py          — BARCHA matnlar shu faylda (tahrirlash oson)
+  health_server.py       — Render uchun HTTP port (/health) va botni uyg'oq tutish
+  backup.py              — baza zaxirasi (adminlarga fayl) va tiklash tekshiruvi
   notify_admins.py, set_bot_commands.py, welcome.py, ...
 assets/                  — welcome.jpg (botdagi rasm), description_pic.jpg (BotFather uchun)
 data/webmaker.db         — ma'lumotlar bazasi (avtomatik yaratiladi; zaxira nusxa uchun shu faylni saqlang)

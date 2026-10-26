@@ -1,6 +1,8 @@
 """SQLite (aiosqlite) bilan ishlash: mijozlar, buyurtmalar, /web so'rovlari."""
 import asyncio
 import logging
+import os
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -89,18 +91,24 @@ class Database:
         self.path = Path(path)
         self._conn: aiosqlite.Connection | None = None
         self._lock: asyncio.Lock | None = None
+        self.was_fresh: bool = False  # init() paytida baza fayli yo'q edi (yangi yoki hosting o'chirib yuborgan)
+        self.dirty: bool = False      # oxirgi zaxiradan keyin ma'lumot o'zgargan
 
     # ───────────── ulanish ─────────────
     async def init(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.was_fresh = not self.path.exists()
         self._lock = asyncio.Lock()
+        await self._connect()
+        logger.info("Ma'lumotlar bazasi tayyor: %s%s", self.path, " (YANGI, bo'sh)" if self.was_fresh else "")
+
+    async def _connect(self) -> None:
         self._conn = await aiosqlite.connect(self.path)
         self._conn.row_factory = aiosqlite.Row
         await self._conn.execute("PRAGMA journal_mode=WAL")
         await self._conn.execute("PRAGMA foreign_keys=ON")
-        await self._conn.executescript(SCHEMA)
+        await self._conn.executescript(SCHEMA)  # eski zaxiralarda yetishmayotgan jadvallar qo'shiladi
         await self._conn.commit()
-        logger.info("Ma'lumotlar bazasi tayyor: %s", self.path)
 
     async def close(self) -> None:
         if self._conn is not None:
@@ -115,17 +123,19 @@ class Database:
         return self._conn
 
     async def _one(self, sql: str, params: tuple = ()) -> dict[str, Any] | None:
-        async with self.conn.execute(sql, params) as cur:
+        assert self._lock is not None
+        async with self._lock, self.conn.execute(sql, params) as cur:
             row = await cur.fetchone()
         return dict(row) if row is not None else None
 
     async def _all(self, sql: str, params: tuple = ()) -> list[dict[str, Any]]:
-        async with self.conn.execute(sql, params) as cur:
+        assert self._lock is not None
+        async with self._lock, self.conn.execute(sql, params) as cur:
             rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
-    async def _write(self, sql: str, params: tuple = ()) -> tuple[int | None, int]:
-        """Yozish amali. (lastrowid, rowcount) qaytaradi."""
+    async def _write(self, sql: str, params: tuple = (), *, dirty: bool = True) -> tuple[int | None, int]:
+        """Yozish amali. (lastrowid, rowcount) qaytaradi. dirty=False: zaxira talab qilmaydigan o'zgarish."""
         assert self._lock is not None
         async with self._lock:
             try:
@@ -135,7 +145,47 @@ class Database:
             except Exception:
                 await self.conn.rollback()
                 raise
+        if dirty:
+            self.dirty = True
         return result
+
+    # ───────────── zaxira va tiklash ─────────────
+    async def stats(self) -> dict[str, int]:
+        orders = await self._one("SELECT COUNT(*) AS n FROM orders")
+        deliveries = await self._one("SELECT COUNT(*) AS n FROM deliveries")
+        return {
+            "customers": await self.count_customers(),
+            "orders": int(orders["n"]) if orders else 0,
+            "deliveries": int(deliveries["n"]) if deliveries else 0,
+        }
+
+    async def backup_to(self, dest: Path) -> None:
+        """Bazaning to'liq va izchil nusxasini `dest` fayliga yozadi (bot ishlayotgan paytda ham xavfsiz)."""
+        assert self._lock is not None
+        dest = Path(dest)
+        dest.unlink(missing_ok=True)
+        async with self._lock, self.conn.execute("VACUUM INTO ?", (str(dest),)):
+            pass
+
+    async def replace_with(self, src: Path) -> None:
+        """Joriy bazani `src` fayli bilan almashtiradi. Eski baza `.bak` nusxa sifatida saqlanadi.
+
+        `src` baza bilan bir papkada (bir diskda) bo'lishi kerak."""
+        assert self._lock is not None
+        async with self._lock:
+            if self._conn is not None:
+                await self._conn.close()
+                self._conn = None
+            try:
+                for suffix in ("-wal", "-shm"):
+                    Path(str(self.path) + suffix).unlink(missing_ok=True)
+                if self.path.exists():
+                    shutil.copy2(self.path, self.path.with_name(self.path.name + ".bak"))
+                os.replace(src, self.path)
+            finally:
+                await self._connect()  # nima bo'lsa ham ulanish tiklanadi
+            self.dirty = True
+            self.was_fresh = False
 
     # ───────────── sozlamalar ─────────────
     async def get_setting(self, key: str) -> str | None:
@@ -147,6 +197,7 @@ class Database:
             "INSERT INTO settings (key, value) VALUES (?, ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             (key, value),
+            dirty=False,
         )
 
     # ───────────── mijozlar ─────────────
@@ -232,6 +283,7 @@ class Database:
             except Exception:
                 await self.conn.rollback()
                 raise
+        self.dirty = True
         customer = await self.get_customer(customer_id)
         order = await self.get_order(order_id)
         assert customer is not None and order is not None
@@ -281,6 +333,7 @@ class Database:
             except Exception:
                 await self.conn.rollback()
                 raise
+        self.dirty = True
         delivery = await self.get_delivery(delivery_id)  # type: ignore[arg-type]
         assert delivery is not None
         return delivery
@@ -367,6 +420,7 @@ class Database:
             "INSERT INTO admin_messages (kind, ref_id, admin_id, message_id) VALUES (?, ?, ?, ?) "
             "ON CONFLICT(kind, ref_id, admin_id) DO UPDATE SET message_id = excluded.message_id",
             (kind, ref_id, admin_id, message_id),
+            dirty=False,
         )
 
     async def get_admin_messages(self, kind: str, ref_id: int) -> list[dict[str, Any]]:
